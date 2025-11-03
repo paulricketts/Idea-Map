@@ -13,7 +13,29 @@ interface Source {
   name: string;
 }
 
-export default function ContentForm({ onSuccess }: { onSuccess?: () => void }) {
+interface ContentItem {
+  id: string;
+  title: string;
+  url?: string;
+  description?: string;
+  type: string;
+  annotations?: string;
+  insights?: string;
+  sourceId?: string;
+  tags: Array<{
+    tag: Tag;
+  }>;
+}
+
+export default function ContentForm({
+  onSuccess,
+  editingItem,
+  onCancel
+}: {
+  onSuccess?: () => void;
+  editingItem?: ContentItem;
+  onCancel?: () => void;
+}) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [tags, setTags] = useState<Tag[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
@@ -42,6 +64,22 @@ export default function ContentForm({ onSuccess }: { onSuccess?: () => void }) {
     fetchSources();
   }, []);
 
+  // Populate form when editing
+  useEffect(() => {
+    if (editingItem) {
+      setFormData({
+        title: editingItem.title,
+        url: editingItem.url || '',
+        description: editingItem.description || '',
+        type: editingItem.type,
+        annotations: editingItem.annotations || '',
+        insights: editingItem.insights || '',
+        sourceId: editingItem.sourceId || '',
+        tagIds: editingItem.tags.map(t => t.tag.id)
+      });
+    }
+  }, [editingItem]);
+
   const fetchTags = async () => {
     const response = await fetch('/api/tags');
     const data = await response.json();
@@ -59,8 +97,13 @@ export default function ContentForm({ onSuccess }: { onSuccess?: () => void }) {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch('/api/content', {
-        method: 'POST',
+      const url = editingItem
+        ? `/api/content/${editingItem.id}`
+        : '/api/content';
+      const method = editingItem ? 'PATCH' : 'POST';
+
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -68,29 +111,31 @@ export default function ContentForm({ onSuccess }: { onSuccess?: () => void }) {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create content');
+        throw new Error(`Failed to ${editingItem ? 'update' : 'create'} content`);
       }
 
-      // Reset form
-      setFormData({
-        title: '',
-        url: '',
-        description: '',
-        type: 'ARTICLE',
-        annotations: '',
-        insights: '',
-        sourceId: '',
-        tagIds: []
-      });
+      // Reset form if creating (not editing)
+      if (!editingItem) {
+        setFormData({
+          title: '',
+          url: '',
+          description: '',
+          type: 'ARTICLE',
+          annotations: '',
+          insights: '',
+          sourceId: '',
+          tagIds: []
+        });
+      }
 
       if (onSuccess) {
         onSuccess();
       }
 
-      alert('Content added successfully!');
+      alert(`Content ${editingItem ? 'updated' : 'added'} successfully!`);
     } catch (error) {
       console.error('Error:', error);
-      alert('Failed to add content. Please try again.');
+      alert(`Failed to ${editingItem ? 'update' : 'add'} content. Please try again.`);
     } finally {
       setIsSubmitting(false);
     }
@@ -379,13 +424,26 @@ export default function ContentForm({ onSuccess }: { onSuccess?: () => void }) {
       </div>
 
       {/* Submit */}
-      <button
-        type="submit"
-        disabled={isSubmitting}
-        className="w-full bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium"
-      >
-        {isSubmitting ? 'Adding...' : 'Add Content'}
-      </button>
+      <div className="flex gap-3">
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="flex-1 bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium"
+        >
+          {isSubmitting
+            ? (editingItem ? 'Updating...' : 'Adding...')
+            : (editingItem ? 'Update Content' : 'Add Content')}
+        </button>
+        {editingItem && onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-6 py-3 bg-gray-300 dark:bg-gray-700 rounded-md hover:bg-gray-400 dark:hover:bg-gray-600 font-medium"
+          >
+            Cancel
+          </button>
+        )}
+      </div>
     </form>
   );
 }
