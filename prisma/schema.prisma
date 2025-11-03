@@ -1,0 +1,120 @@
+// This is your Prisma schema file
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Main content item - articles, videos, podcasts, etc.
+model ContentItem {
+  id          String   @id @default(cuid())
+  title       String
+  url         String?
+  description String?  @db.Text
+  type        ContentType
+  annotations String?  @db.Text  // Your personal notes and thoughts
+  insights    String?  @db.Text  // 2nd/3rd order effects, business ideas
+
+  // Metadata
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  publishedAt DateTime?
+
+  // Relations
+  sourceId    String?
+  source      Source?  @relation(fields: [sourceId], references: [id])
+
+  tags        ContentItemTag[]
+
+  // Connections to other content items
+  connectionsFrom Connection[] @relation("FromItem")
+  connectionsTo   Connection[] @relation("ToItem")
+
+  @@index([createdAt])
+  @@index([type])
+}
+
+// Type of content
+enum ContentType {
+  ARTICLE
+  VIDEO
+  PODCAST
+  BOOK
+  TWEET
+  NEWSLETTER
+  OTHER
+}
+
+// Tags for categorization
+model Tag {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  color       String?  // Hex color for visual organization
+
+  createdAt   DateTime @default(now())
+
+  contentItems ContentItemTag[]
+}
+
+// Many-to-many relationship between ContentItem and Tag
+model ContentItemTag {
+  id            String      @id @default(cuid())
+  contentItemId String
+  tagId         String
+
+  contentItem   ContentItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  tag           Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime    @default(now())
+
+  @@unique([contentItemId, tagId])
+  @@index([contentItemId])
+  @@index([tagId])
+}
+
+// Source of content (newsletter, website, person, etc.)
+model Source {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  url         String?
+  type        SourceType?
+  description String?
+
+  createdAt   DateTime @default(now())
+
+  contentItems ContentItem[]
+}
+
+enum SourceType {
+  NEWSLETTER
+  WEBSITE
+  PERSON
+  PODCAST
+  OTHER
+}
+
+// Connections between content items to show relationships
+model Connection {
+  id          String   @id @default(cuid())
+
+  fromItemId  String
+  toItemId    String
+
+  fromItem    ContentItem @relation("FromItem", fields: [fromItemId], references: [id], onDelete: Cascade)
+  toItem      ContentItem @relation("ToItem", fields: [toItemId], references: [id], onDelete: Cascade)
+
+  note        String?  @db.Text  // Why these items are connected
+  strength    Int?     @default(1)  // How strong the connection is (1-5)
+
+  createdAt   DateTime @default(now())
+
+  @@unique([fromItemId, toItemId])
+  @@index([fromItemId])
+  @@index([toItemId])
+}
