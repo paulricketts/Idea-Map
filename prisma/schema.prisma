@@ -31,6 +31,9 @@ model ContentItem {
 
   tags        ContentItemTag[]
 
+  // Track if this came from ingestion
+  ingestedFrom IngestedItem[]
+
   // Connections to other content items
   connectionsFrom Connection[] @relation("FromItem")
   connectionsTo   Connection[] @relation("ToItem")
@@ -117,4 +120,107 @@ model Connection {
   @@unique([fromItemId, toItemId])
   @@index([fromItemId])
   @@index([toItemId])
+}
+
+// Ingestion jobs - tracks incoming content to be processed
+model IngestionJob {
+  id            String   @id @default(cuid())
+
+  // Source information
+  fromEmail     String
+  subject       String?
+  rawContent    String   @db.Text  // Raw email HTML/text
+  parserType    String   // Which parser was used (e.g., "benedict-evans", "manual")
+
+  // Status tracking
+  status        IngestionStatus @default(PENDING)
+  processedAt   DateTime?
+  errorMessage  String?  @db.Text
+
+  createdAt     DateTime @default(now())
+
+  // Extracted items
+  items         IngestedItem[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([fromEmail])
+}
+
+enum IngestionStatus {
+  PENDING     // Waiting to be processed
+  PROCESSING  // Currently being parsed
+  COMPLETED   // Successfully parsed, items extracted
+  FAILED      // Parsing failed
+  APPROVED    // All items approved and added to main collection
+}
+
+// Individual items extracted from an ingestion job
+model IngestedItem {
+  id          String   @id @default(cuid())
+
+  jobId       String
+  job         IngestionJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  // Extracted data (matches ContentItem structure)
+  title       String
+  url         String?
+  description String?  @db.Text
+  type        ContentType @default(ARTICLE)
+
+  // Auto-generated or default values
+  suggestedTags   String?  @db.Text  // JSON array of suggested tag names
+  confidence      Float?   // How confident the parser is (0-1)
+
+  // Status
+  status      IngestedItemStatus @default(PENDING)
+  reviewNotes String?  @db.Text  // Your notes during review
+
+  // If approved, link to created content item
+  contentItemId String?
+  contentItem   ContentItem? @relation(fields: [contentItemId], references: [id])
+
+  createdAt   DateTime @default(now())
+
+  @@index([jobId])
+  @@index([status])
+}
+
+enum IngestedItemStatus {
+  PENDING   // Waiting for review
+  APPROVED  // Approved, will be added to main collection
+  REJECTED  // User rejected this item
+  ADDED     // Successfully added to main collection
+}
+
+// Update ContentItem to track if it came from ingestion
+model ContentItem {
+  id          String   @id @default(cuid())
+  title       String
+  url         String?
+  description String?  @db.Text
+  type        ContentType
+  annotations String?  @db.Text  // Your personal notes and thoughts
+  insights    String?  @db.Text  // 2nd/3rd order effects, business ideas
+
+  // Metadata
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  publishedAt DateTime?
+
+  // Relations
+  sourceId    String?
+  source      Source?  @relation(fields: [sourceId], references: [id])
+
+  tags        ContentItemTag[]
+
+  // Track if this came from ingestion
+  ingestedFrom IngestedItem[]
+
+  // Connections to other content items
+  connectionsFrom Connection[] @relation("FromItem")
+  connectionsTo   Connection[] @relation("ToItem")
+
+  @@index([createdAt])
+  @@index([type])
 }

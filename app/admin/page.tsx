@@ -52,12 +52,20 @@ export default function AdminPage() {
                 Add and manage your content collection
               </p>
             </div>
-            <a
-              href="/"
-              className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-            >
-              ← Back to Public View
-            </a>
+            <div className="flex items-center gap-4">
+              <a
+                href="/admin/ingest"
+                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
+              >
+                📥 Review Ingested Content
+              </a>
+              <a
+                href="/"
+                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+              >
+                ← Back to Public View
+              </a>
+            </div>
           </div>
         </header>
 
