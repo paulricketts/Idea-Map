@@ -23,6 +23,12 @@ export interface ExtractedItem {
   url?: string;
   description?: string;
   type: ContentType;
+
+  // Rich metadata
+  category?: string;    // e.g., "News", "Ideas", "Data"
+  section?: string;     // Subsection or topic
+  authorNote?: string;  // Original author's commentary/annotation
+
   suggestedTags?: string[];
   confidence?: number; // 0-1, how confident the parser is
 }

@@ -95,6 +95,9 @@ export class IngestionService {
             url: item.url,
             description: item.description,
             type: item.type,
+            category: item.category,
+            section: item.section,
+            authorNote: item.authorNote,
             suggestedTags: item.suggestedTags ? JSON.stringify(item.suggestedTags) : null,
             confidence: item.confidence,
             status: 'PENDING'
