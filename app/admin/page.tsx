@@ -54,6 +54,12 @@ export default function AdminPage() {
             </div>
             <div className="flex items-center gap-4">
               <a
+                href="/admin/test-ingest"
+                className="px-3 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 font-medium text-sm"
+              >
+                🧪 Test Newsletter Parser
+              </a>
+              <a
                 href="/admin/ingest"
                 className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
               >
