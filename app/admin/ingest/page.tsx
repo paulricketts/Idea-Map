@@ -8,6 +8,9 @@ interface IngestedItem {
   url?: string;
   description?: string;
   type: string;
+  category?: string;
+  section?: string;
+  authorNote?: string;
   suggestedTags?: string;
   confidence?: number;
   status: string;
@@ -310,7 +313,12 @@ export default function IngestPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-3 mb-2">
                               <h4 className="font-medium text-base">{item.title}</h4>
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                {item.category && (
+                                  <span className="px-2 py-0.5 bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 rounded text-xs font-medium">
+                                    {item.category}
+                                  </span>
+                                )}
                                 <span className={`px-2 py-0.5 rounded text-xs font-medium ${getTypeColor(item.type)}`}>
                                   {item.type}
                                 </span>
@@ -339,8 +347,14 @@ export default function IngestPage() {
                                 {item.description}
                               </p>
                             )}
+                            {item.authorNote && (
+                              <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-sm">
+                                <span className="font-semibold text-blue-900 dark:text-blue-300">Benedict's note:</span>
+                                <span className="text-gray-700 dark:text-gray-300 ml-2 italic">{item.authorNote}</span>
+                              </div>
+                            )}
                             {item.suggestedTags && (
-                              <div className="flex gap-1 mt-2">
+                              <div className="flex flex-wrap gap-1 mt-2">
                                 {JSON.parse(item.suggestedTags).map((tag: string, idx: number) => (
                                   <span
                                     key={idx}
