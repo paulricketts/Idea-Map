@@ -33,12 +33,16 @@ export default function TestIngestPage() {
       }
 
       const data = await response.json();
-      alert(`Success! Created job ${data.job.id} with ${data.itemCount} items`);
+      alert(`Success! Created job ${data.jobId}. Redirecting to review page...`);
 
       // Redirect to ingest review page
       router.push('/admin/ingest');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('An unknown error occurred');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -97,7 +101,7 @@ export default function TestIngestPage() {
                 Newsletter HTML
               </label>
               <p className="text-xs text-gray-500 mb-2">
-                Open the newsletter in your browser, right-click → "View Page Source" or "Inspect",
+                Open the newsletter in your browser, right-click → &quot;View Page Source&quot; or &quot;Inspect&quot;,
                 then copy the entire HTML
               </p>
               <textarea
@@ -145,16 +149,16 @@ export default function TestIngestPage() {
             <h3 className="font-semibold mb-3">How to get newsletter HTML:</h3>
             <ol className="list-decimal list-inside space-y-2 text-sm text-gray-600 dark:text-gray-400">
               <li>Open the Benedict Evans newsletter in your email client</li>
-              <li>Click "View in browser" if available (easier to get clean HTML)</li>
-              <li>Right-click on the page and select "View Page Source" (or press Ctrl+U / Cmd+Option+U)</li>
+              <li>Click &quot;View in browser&quot; if available (easier to get clean HTML)</li>
+              <li>Right-click on the page and select &quot;View Page Source&quot; (or press Ctrl+U / Cmd+Option+U)</li>
               <li>Copy all the HTML (Ctrl+A / Cmd+A, then Ctrl+C / Cmd+C)</li>
               <li>Paste it into the textarea above</li>
-              <li>Click "Process Newsletter"</li>
+              <li>Click &quot;Process Newsletter&quot;</li>
             </ol>
 
             <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-sm">
-              <strong>Note:</strong> After processing, you'll be redirected to the review page
-              where you can see all extracted items with categories and Benedict's notes.
+              <strong>Note:</strong> After processing, you&apos;ll be redirected to the review page
+              where you can see all extracted items with categories and Benedict&apos;s notes.
             </div>
           </div>
         </div>
