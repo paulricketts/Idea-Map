@@ -1,15 +1,11 @@
 /**
  * Ingestion API Endpoint
- *
- * This endpoint receives forwarded emails and processes them.
- * You can:
- * - POST email data directly (for testing)
- * - Configure email forwarding service to POST here
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { ingestionService } from '@/lib/ingestion-service';
-import '@/lib/parsers'; // Initialize parsers
+import { isRawEmail, parseRawEmail } from '@/lib/email-parser';
+import '@/lib/parsers';
 
 /**
  * POST /api/ingest
@@ -26,7 +22,18 @@ import '@/lib/parsers'; // Initialize parsers
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { from, subject, html, text } = body;
+    let { from, subject, html, text } = body;
+
+    // Check if 'html' field contains a raw email file
+    if (html && isRawEmail(html)) {
+      console.log('[Ingest API] Detected raw email, parsing...');
+      const parsed = await parseRawEmail(html);
+      from = parsed.from || from;
+      subject = parsed.subject || subject;
+      html = parsed.html;
+      text = parsed.text;
+      console.log('[Ingest API] Parsed email from:', from, 'subject:', subject);
+    }
 
     if (!from) {
       return NextResponse.json(
@@ -35,7 +42,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Process the email
     const jobId = await ingestionService.processEmail({
       from,
       subject,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface IngestedItem {
   id: string;
@@ -28,17 +28,51 @@ interface IngestionJob {
   items: IngestedItem[];
 }
 
+interface Source {
+  id: string;
+  name: string;
+  url?: string;
+  type?: string;
+}
+
+// Check if a title needs editing
+function needsTitle(title: string): boolean {
+  const invalidTitles = ['link', 'untitled', ''];
+  return invalidTitles.includes(title.toLowerCase().trim());
+}
+
 export default function IngestPage() {
   const [jobs, setJobs] = useState<IngestionJob[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
-  const [sources, setSources] = useState<Array<{ id: string; name: string }>>([]);
+  const [sources, setSources] = useState<Source[]>([]);
   const [selectedSource, setSelectedSource] = useState<string>('');
+  
+  // Title editing state
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
+  const [savingTitle, setSavingTitle] = useState(false);
+  const editInputRef = useRef<HTMLInputElement>(null);
+  
+  // New source modal state
+  const [showNewSourceModal, setShowNewSourceModal] = useState(false);
+  const [newSourceName, setNewSourceName] = useState('');
+  const [newSourceUrl, setNewSourceUrl] = useState('');
+  const [newSourceType, setNewSourceType] = useState<string>('NEWSLETTER');
+  const [isCreatingSource, setIsCreatingSource] = useState(false);
 
   useEffect(() => {
     fetchJobs();
     fetchSources();
   }, []);
+
+  // Focus input when editing starts
+  useEffect(() => {
+    if (editingItemId && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [editingItemId]);
 
   const fetchJobs = async () => {
     setIsLoading(true);
@@ -60,6 +94,101 @@ export default function IngestPage() {
       setSources(data);
     } catch (error) {
       console.error('Error fetching sources:', error);
+    }
+  };
+
+  // Start editing a title
+  const startEditingTitle = (item: IngestedItem) => {
+    setEditingItemId(item.id);
+    setEditingTitle(needsTitle(item.title) ? '' : item.title);
+  };
+
+  // Save edited title
+  const saveTitle = async (jobId: string, itemId: string) => {
+    if (!editingTitle.trim()) {
+      alert('Please enter a title');
+      return;
+    }
+
+    setSavingTitle(true);
+    try {
+      const response = await fetch(`/api/ingest/${jobId}/items/${itemId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: editingTitle.trim() })
+      });
+
+      if (!response.ok) throw new Error('Failed to save title');
+
+      // Update local state
+      setJobs(jobs.map(job => ({
+        ...job,
+        items: job.items.map(item =>
+          item.id === itemId ? { ...item, title: editingTitle.trim() } : item
+        )
+      })));
+
+      setEditingItemId(null);
+      setEditingTitle('');
+    } catch (error) {
+      console.error('Error saving title:', error);
+      alert('Failed to save title');
+    } finally {
+      setSavingTitle(false);
+    }
+  };
+
+  // Cancel editing
+  const cancelEditing = () => {
+    setEditingItemId(null);
+    setEditingTitle('');
+  };
+
+  // Handle key press in edit input
+  const handleEditKeyDown = (e: React.KeyboardEvent, jobId: string, itemId: string) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      saveTitle(jobId, itemId);
+    } else if (e.key === 'Escape') {
+      cancelEditing();
+    }
+  };
+
+  const handleCreateSource = async () => {
+    if (!newSourceName.trim()) {
+      alert('Please enter a source name');
+      return;
+    }
+
+    setIsCreatingSource(true);
+    try {
+      const response = await fetch('/api/sources', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newSourceName.trim(),
+          url: newSourceUrl.trim() || undefined,
+          type: newSourceType
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create source');
+      }
+
+      const newSource = await response.json();
+      setSources([...sources, newSource].sort((a, b) => a.name.localeCompare(b.name)));
+      setSelectedSource(newSource.id);
+      setShowNewSourceModal(false);
+      setNewSourceName('');
+      setNewSourceUrl('');
+      setNewSourceType('NEWSLETTER');
+    } catch (error) {
+      console.error('Error creating source:', error);
+      alert(error instanceof Error ? error.message : 'Failed to create source');
+    } finally {
+      setIsCreatingSource(false);
     }
   };
 
@@ -94,6 +223,19 @@ export default function IngestPage() {
 
     if (itemsToApprove.length === 0) {
       alert('No items selected!');
+      return;
+    }
+
+    // Check for items missing titles
+    const itemsMissingTitles = job.items.filter(
+      item => itemsToApprove.includes(item.id) && needsTitle(item.title)
+    );
+
+    if (itemsMissingTitles.length > 0) {
+      alert(
+        `Cannot approve ${itemsMissingTitles.length} item(s) without proper titles.\n\n` +
+        `Please click on items marked with ⚠️ to add titles before approving.`
+      );
       return;
     }
 
@@ -173,6 +315,13 @@ export default function IngestPage() {
     return colors[type] || 'bg-gray-100 text-gray-800';
   };
 
+  // Count items needing titles in selected set
+  const getSelectedItemsNeedingTitles = (job: IngestionJob) => {
+    return job.items.filter(
+      item => selectedItems.has(item.id) && needsTitle(item.title)
+    ).length;
+  };
+
   if (isLoading) {
     return (
       <main className="min-h-screen p-8 bg-gray-50 dark:bg-gray-900">
@@ -215,6 +364,7 @@ export default function IngestPage() {
             {jobs.map((job) => {
               const pendingItems = job.items.filter(item => item.status === 'PENDING');
               const jobSelectedCount = job.items.filter(item => selectedItems.has(item.id)).length;
+              const selectedNeedingTitles = getSelectedItemsNeedingTitles(job);
 
               return (
                 <div
@@ -248,7 +398,7 @@ export default function IngestPage() {
                     )}
 
                     {pendingItems.length > 0 && (
-                      <div className="mt-4 flex items-center gap-3">
+                      <div className="mt-4 flex flex-wrap items-center gap-3">
                         <button
                           onClick={() => selectAll(job.id)}
                           className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400"
@@ -260,21 +410,46 @@ export default function IngestPage() {
                             <span className="text-sm text-gray-500">
                               {jobSelectedCount} selected
                             </span>
-                            <select
-                              value={selectedSource}
-                              onChange={(e) => setSelectedSource(e.target.value)}
-                              className="text-sm px-2 py-1 border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700"
-                            >
-                              <option value="">No source</option>
-                              {sources.map(source => (
-                                <option key={source.id} value={source.id}>
-                                  {source.name}
-                                </option>
-                              ))}
-                            </select>
+                            
+                            {/* Warning if selected items need titles */}
+                            {selectedNeedingTitles > 0 && (
+                              <span className="text-sm text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                                ⚠️ {selectedNeedingTitles} need titles
+                              </span>
+                            )}
+                            
+                            {/* Source selector with create option */}
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={selectedSource}
+                                onChange={(e) => {
+                                  if (e.target.value === '__new__') {
+                                    setShowNewSourceModal(true);
+                                  } else {
+                                    setSelectedSource(e.target.value);
+                                  }
+                                }}
+                                className="text-sm px-2 py-1 border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700"
+                              >
+                                <option value="">No source</option>
+                                {sources.map(source => (
+                                  <option key={source.id} value={source.id}>
+                                    {source.name}
+                                  </option>
+                                ))}
+                                <option value="__new__">+ Create new source...</option>
+                              </select>
+                            </div>
+                            
                             <button
                               onClick={() => handleApprove(job.id)}
-                              className="px-4 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                              disabled={selectedNeedingTitles > 0}
+                              className={`px-4 py-1 rounded text-sm text-white ${
+                                selectedNeedingTitles > 0
+                                  ? 'bg-gray-400 cursor-not-allowed'
+                                  : 'bg-green-600 hover:bg-green-700'
+                              }`}
+                              title={selectedNeedingTitles > 0 ? 'Add titles to all selected items first' : ''}
                             >
                               Approve {jobSelectedCount}
                             </button>
@@ -292,83 +467,146 @@ export default function IngestPage() {
 
                   {/* Items */}
                   <div className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {job.items.map((item) => (
-                      <div
-                        key={item.id}
-                        className={`p-4 ${
-                          item.status !== 'PENDING'
-                            ? 'opacity-50'
-                            : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          {item.status === 'PENDING' && (
-                            <input
-                              type="checkbox"
-                              checked={selectedItems.has(item.id)}
-                              onChange={() => toggleItem(item.id)}
-                              className="mt-1"
-                            />
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-3 mb-2">
-                              <h4 className="font-medium text-base">{item.title}</h4>
-                              <div className="flex items-center gap-2 flex-shrink-0">
-                                {item.category && (
-                                  <span className="px-2 py-0.5 bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 rounded text-xs font-medium">
-                                    {item.category}
-                                  </span>
+                    {job.items.map((item) => {
+                      const itemNeedsTitle = needsTitle(item.title);
+                      const isEditing = editingItemId === item.id;
+
+                      return (
+                        <div
+                          key={item.id}
+                          className={`p-4 ${
+                            item.status !== 'PENDING'
+                              ? 'opacity-50'
+                              : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            {item.status === 'PENDING' && (
+                              <input
+                                type="checkbox"
+                                checked={selectedItems.has(item.id)}
+                                onChange={() => toggleItem(item.id)}
+                                className="mt-1"
+                              />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-3 mb-2">
+                                {/* Editable Title */}
+                                {isEditing ? (
+                                  <div className="flex items-center gap-2 flex-1">
+                                    <input
+                                      ref={editInputRef}
+                                      type="text"
+                                      value={editingTitle}
+                                      onChange={(e) => setEditingTitle(e.target.value)}
+                                      onKeyDown={(e) => handleEditKeyDown(e, job.id, item.id)}
+                                      className="flex-1 px-2 py-1 border border-blue-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-blue-500"
+                                      placeholder="Enter a title..."
+                                      disabled={savingTitle}
+                                    />
+                                    <button
+                                      onClick={() => saveTitle(job.id, item.id)}
+                                      disabled={savingTitle}
+                                      className="px-2 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
+                                    >
+                                      {savingTitle ? '...' : 'Save'}
+                                    </button>
+                                    <button
+                                      onClick={cancelEditing}
+                                      disabled={savingTitle}
+                                      className="px-2 py-1 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2">
+                                    {itemNeedsTitle && item.status === 'PENDING' && (
+                                      <span className="text-amber-500" title="Needs a title">⚠️</span>
+                                    )}
+                                    <h4
+                                      className={`font-medium text-base ${
+                                        item.status === 'PENDING'
+                                          ? 'cursor-pointer hover:text-blue-600 dark:hover:text-blue-400'
+                                          : ''
+                                      } ${
+                                        itemNeedsTitle
+                                          ? 'text-amber-600 dark:text-amber-400 italic'
+                                          : ''
+                                      }`}
+                                      onClick={() => item.status === 'PENDING' && startEditingTitle(item)}
+                                      title={item.status === 'PENDING' ? 'Click to edit title' : ''}
+                                    >
+                                      {itemNeedsTitle ? '(click to add title)' : item.title}
+                                    </h4>
+                                    {item.status === 'PENDING' && !itemNeedsTitle && (
+                                      <button
+                                        onClick={() => startEditingTitle(item)}
+                                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-sm"
+                                        title="Edit title"
+                                      >
+                                        ✏️
+                                      </button>
+                                    )}
+                                  </div>
                                 )}
-                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${getTypeColor(item.type)}`}>
-                                  {item.type}
-                                </span>
-                                {item.confidence !== null && item.confidence !== undefined && (
-                                  <span className="text-xs text-gray-500">
-                                    {Math.round(item.confidence * 100)}%
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  {item.category && (
+                                    <span className="px-2 py-0.5 bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 rounded text-xs font-medium">
+                                      {item.category}
+                                    </span>
+                                  )}
+                                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${getTypeColor(item.type)}`}>
+                                    {item.type}
                                   </span>
-                                )}
-                                <span className={`px-2 py-0.5 rounded text-xs ${getStatusColor(item.status)}`}>
-                                  {item.status}
-                                </span>
+                                  {item.confidence !== null && item.confidence !== undefined && (
+                                    <span className="text-xs text-gray-500">
+                                      {Math.round(item.confidence * 100)}%
+                                    </span>
+                                  )}
+                                  <span className={`px-2 py-0.5 rounded text-xs ${getStatusColor(item.status)}`}>
+                                    {item.status}
+                                  </span>
+                                </div>
                               </div>
+                              {item.url && (
+                                <a
+                                  href={item.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-sm text-blue-600 hover:underline dark:text-blue-400 block mb-1 truncate"
+                                >
+                                  🔗 {item.url}
+                                </a>
+                              )}
+                              {item.description && (
+                                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                  {item.description}
+                                </p>
+                              )}
+                              {item.authorNote && (
+                                <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-sm">
+                                  <span className="font-semibold text-blue-900 dark:text-blue-300">Benedict&apos;s note:</span>
+                                  <span className="text-gray-700 dark:text-gray-300 ml-2 italic">{item.authorNote}</span>
+                                </div>
+                              )}
+                              {item.suggestedTags && (
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {JSON.parse(item.suggestedTags).map((tag: string, idx: number) => (
+                                    <span
+                                      key={idx}
+                                      className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs"
+                                    >
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </div>
-                            {item.url && (
-                              <a
-                                href={item.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-sm text-blue-600 hover:underline dark:text-blue-400 block mb-1 truncate"
-                              >
-                                {item.url}
-                              </a>
-                            )}
-                            {item.description && (
-                              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                                {item.description}
-                              </p>
-                            )}
-                            {item.authorNote && (
-                              <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-sm">
-                                <span className="font-semibold text-blue-900 dark:text-blue-300">Benedict's note:</span>
-                                <span className="text-gray-700 dark:text-gray-300 ml-2 italic">{item.authorNote}</span>
-                              </div>
-                            )}
-                            {item.suggestedTags && (
-                              <div className="flex flex-wrap gap-1 mt-2">
-                                {JSON.parse(item.suggestedTags).map((tag: string, idx: number) => (
-                                  <span
-                                    key={idx}
-                                    className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs"
-                                  >
-                                    {tag}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -376,6 +614,79 @@ export default function IngestPage() {
           </div>
         )}
       </div>
+
+      {/* Create New Source Modal */}
+      {showNewSourceModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+            <h2 className="text-xl font-semibold mb-4">Create New Source</h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={newSourceName}
+                  onChange={(e) => setNewSourceName(e.target.value)}
+                  placeholder="e.g., Benedict Evans Newsletter"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700"
+                  autoFocus
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">URL</label>
+                <input
+                  type="url"
+                  value={newSourceUrl}
+                  onChange={(e) => setNewSourceUrl(e.target.value)}
+                  placeholder="e.g., https://www.ben-evans.com"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">Type</label>
+                <select
+                  value={newSourceType}
+                  onChange={(e) => setNewSourceType(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700"
+                >
+                  <option value="NEWSLETTER">Newsletter</option>
+                  <option value="WEBSITE">Website</option>
+                  <option value="PERSON">Person</option>
+                  <option value="PODCAST">Podcast</option>
+                  <option value="OTHER">Other</option>
+                </select>
+              </div>
+            </div>
+            
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowNewSourceModal(false);
+                  setNewSourceName('');
+                  setNewSourceUrl('');
+                  setNewSourceType('NEWSLETTER');
+                }}
+                className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                disabled={isCreatingSource}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateSource}
+                disabled={isCreatingSource || !newSourceName.trim()}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isCreatingSource ? 'Creating...' : 'Create Source'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

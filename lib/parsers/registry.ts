@@ -27,7 +27,7 @@ class ParserRegistry {
    * @returns The first parser that can handle it, or null
    */
   findParser(email: IncomingEmail): ContentParser | null {
-    for (const parser of this.parsers.values()) {
+    for (const parser of Array.from(this.parsers.values())) {
       if (parser.canHandle(email)) {
         console.log(`[ParserRegistry] Found parser: ${parser.name}`);
         return parser;

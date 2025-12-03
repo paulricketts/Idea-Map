@@ -1,8 +1,6 @@
 /**
- * Approve Ingested Items
- *
- * POST /api/ingest/:jobId/approve
- * Approve selected items and add them to the main collection
+ * Approve Ingested Items API
+ * POST - Approve selected items and add them to main collection
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -10,15 +8,16 @@ import { ingestionService } from '@/lib/ingestion-service';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { jobId: string } }
+  { params }: { params: Promise<{ jobId: string }> }
 ) {
   try {
+    const { jobId } = await params;
     const body = await request.json();
     const { itemIds, sourceId } = body;
 
     if (!itemIds || !Array.isArray(itemIds) || itemIds.length === 0) {
       return NextResponse.json(
-        { error: 'Missing or invalid itemIds array' },
+        { error: 'itemIds array is required' },
         { status: 400 }
       );
     }
@@ -27,7 +26,8 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message: `Approved ${itemIds.length} items`
+      message: `Approved ${itemIds.length} items`,
+      approvedCount: itemIds.length
     });
   } catch (error) {
     console.error('[Approve API] Error:', error);
