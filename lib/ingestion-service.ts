@@ -30,10 +30,9 @@ export class IngestionService {
       }
     });
 
-    // Process in background (or could use a queue)
-    this.processJob(job.id).catch(error => {
-      console.error(`[IngestionService] Error processing job ${job.id}:`, error);
-    });
+    // Process synchronously - wait for completion before returning
+    // This ensures the webhook doesn't return until processing is done
+    await this.processJob(job.id);
 
     return job.id;
   }
@@ -86,10 +85,11 @@ export class IngestionService {
         throw new Error(result.error || 'Parsing failed');
       }
 
-      // Create ingested items
-      for (const item of result.items) {
-        await prisma.ingestedItem.create({
-          data: {
+      // Create all ingested items in a single batch operation
+      // This is MUCH faster than creating them one-by-one
+      if (result.items.length > 0){
+        await prisma.ingestedItem.createMany({
+          data: result.items.map(item => ({
             jobId: job.id,
             title: item.title,
             url: item.url,
@@ -99,9 +99,8 @@ export class IngestionService {
             section: item.section,
             authorNote: item.authorNote,
             suggestedTags: item.suggestedTags ? JSON.stringify(item.suggestedTags) : null,
-            confidence: item.confidence,
             status: 'PENDING'
-          }
+          }))
         });
       }
 
