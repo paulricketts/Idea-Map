@@ -56,6 +56,13 @@ export default function ContentList() {
 
       const response = await fetch(`/api/content?${params}`);
       const data = await response.json();
+
+      if (!Array.isArray(data)) {
+        console.error('API returned non-array:', data);
+        setContent([]);
+        return;
+      }
+
       setContent(data);
     } catch (error) {
       console.error('Error fetching content:', error);

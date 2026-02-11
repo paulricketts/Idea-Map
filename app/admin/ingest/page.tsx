@@ -60,6 +60,12 @@ export default function IngestPage() {
   const [newSourceUrl, setNewSourceUrl] = useState('');
   const [newSourceType, setNewSourceType] = useState<string>('NEWSLETTER');
   const [isCreatingSource, setIsCreatingSource] = useState(false);
+  
+  // Collapsible job state - tracks which jobs are expanded
+  const [expandedJobs, setExpandedJobs] = useState<Set<string>>(new Set());
+  
+  // Filter state - whether to hide completed/approved jobs
+  const [hideCompletedJobs, setHideCompletedJobs] = useState(false);
 
   useEffect(() => {
     fetchJobs();
@@ -332,6 +338,39 @@ export default function IngestPage() {
     );
   }
 
+    // Toggle a job's expanded/collapsed state
+    const toggleJobExpanded = (jobId: string) => {
+      const newExpanded = new Set(expandedJobs);
+      if (newExpanded.has(jobId)) {
+        newExpanded.delete(jobId);
+      } else {
+        newExpanded.add(jobId);
+      }
+      setExpandedJobs(newExpanded);
+    };
+  
+    // Check if a job is "completed" (should be hidden when filter is on)
+    const isJobCompleted = (job: IngestionJob) => {
+      // Job is completed if its status is APPROVED
+      if (job.status === 'APPROVED') return true;
+      
+      // Or if all items are either ADDED or REJECTED (none pending)
+      if (job.items.length === 0) return false;
+      return job.items.every(item => 
+        item.status === 'ADDED' || item.status === 'REJECTED'
+      );
+    };
+  
+    // Expand all jobs (useful utility)
+    const expandAllJobs = () => {
+      setExpandedJobs(new Set(jobs.map(j => j.id)));
+    };
+  
+    // Collapse all jobs
+    const collapseAllJobs = () => {
+      setExpandedJobs(new Set());
+    };
+
   return (
     <main className="min-h-screen p-8 bg-gray-50 dark:bg-gray-900">
       <div className="max-w-6xl mx-auto">
@@ -350,6 +389,39 @@ export default function IngestPage() {
               ← Back to Admin
             </a>
           </div>
+          
+          {/* Filter and view controls */}
+          <div className="flex items-center gap-4 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+            {/* Hide completed toggle */}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={hideCompletedJobs}
+                onChange={(e) => setHideCompletedJobs(e.target.checked)}
+                className="rounded border-gray-300 dark:border-gray-600"
+              />
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                Hide completed jobs
+              </span>
+            </label>
+            
+            {/* Expand/Collapse all buttons */}
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                onClick={expandAllJobs}
+                className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400"
+              >
+                Expand all
+              </button>
+              <span className="text-gray-300 dark:text-gray-600">|</span>
+              <button
+                onClick={collapseAllJobs}
+                className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400"
+              >
+                Collapse all
+              </button>
+            </div>
+          </div>
         </header>
 
         {jobs.length === 0 ? (
@@ -361,7 +433,9 @@ export default function IngestPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            {jobs.map((job) => {
+            {jobs
+              .filter(job => !hideCompletedJobs || !isJobCompleted(job))
+              .map((job) => {
               const pendingItems = job.items.filter(item => item.status === 'PENDING');
               const jobSelectedCount = job.items.filter(item => selectedItems.has(item.id)).length;
               const selectedNeedingTitles = getSelectedItemsNeedingTitles(job);
@@ -371,13 +445,21 @@ export default function IngestPage() {
                   key={job.id}
                   className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700"
                 >
-                  {/* Job Header */}
+                  {/* Job Header - Clickable to expand/collapse */}
                   <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-lg mb-1">
-                          {job.subject || 'No Subject'}
-                        </h3>
+                    <div 
+                      className="flex items-start justify-between cursor-pointer"
+                      onClick={() => toggleJobExpanded(job.id)}
+                    >
+                      <div className="flex items-center gap-3 flex-1">
+                        {/* Expand/Collapse indicator */}
+                        <span className="text-gray-400 dark:text-gray-500 select-none">
+                          {expandedJobs.has(job.id) ? '▼' : '▶'}
+                        </span>
+                        <div>
+                          <h3 className="font-semibold text-lg mb-1">
+                            {job.subject || 'No Subject'}
+                          </h3>
                         <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
                           <span>From: {job.fromEmail}</span>
                           <span>•</span>
@@ -386,6 +468,7 @@ export default function IngestPage() {
                           <span>{new Date(job.createdAt).toLocaleString()}</span>
                         </div>
                       </div>
+                    </div>
                       <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(job.status)}`}>
                         {job.status}
                       </span>
@@ -465,149 +548,151 @@ export default function IngestPage() {
                     )}
                   </div>
 
-                  {/* Items */}
-                  <div className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {job.items.map((item) => {
-                      const itemNeedsTitle = needsTitle(item.title);
-                      const isEditing = editingItemId === item.id;
+                  {/* Items - only shown when job is expanded */}
+                  {expandedJobs.has(job.id) && (
+                    <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                      {job.items.map((item) => {
+                        const itemNeedsTitle = needsTitle(item.title);
+                        const isEditing = editingItemId === item.id;
 
-                      return (
-                        <div
-                          key={item.id}
-                          className={`p-4 ${
-                            item.status !== 'PENDING'
-                              ? 'opacity-50'
-                              : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
-                          }`}
-                        >
-                          <div className="flex items-start gap-3">
-                            {item.status === 'PENDING' && (
-                              <input
-                                type="checkbox"
-                                checked={selectedItems.has(item.id)}
-                                onChange={() => toggleItem(item.id)}
-                                className="mt-1"
-                              />
-                            )}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-start justify-between gap-3 mb-2">
-                                {/* Editable Title */}
-                                {isEditing ? (
-                                  <div className="flex items-center gap-2 flex-1">
-                                    <input
-                                      ref={editInputRef}
-                                      type="text"
-                                      value={editingTitle}
-                                      onChange={(e) => setEditingTitle(e.target.value)}
-                                      onKeyDown={(e) => handleEditKeyDown(e, job.id, item.id)}
-                                      className="flex-1 px-2 py-1 border border-blue-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-blue-500"
-                                      placeholder="Enter a title..."
-                                      disabled={savingTitle}
-                                    />
-                                    <button
-                                      onClick={() => saveTitle(job.id, item.id)}
-                                      disabled={savingTitle}
-                                      className="px-2 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
-                                    >
-                                      {savingTitle ? '...' : 'Save'}
-                                    </button>
-                                    <button
-                                      onClick={cancelEditing}
-                                      disabled={savingTitle}
-                                      className="px-2 py-1 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                                    >
-                                      Cancel
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center gap-2">
-                                    {itemNeedsTitle && item.status === 'PENDING' && (
-                                      <span className="text-amber-500" title="Needs a title">⚠️</span>
-                                    )}
-                                    <h4
-                                      className={`font-medium text-base ${
-                                        item.status === 'PENDING'
-                                          ? 'cursor-pointer hover:text-blue-600 dark:hover:text-blue-400'
-                                          : ''
-                                      } ${
-                                        itemNeedsTitle
-                                          ? 'text-amber-600 dark:text-amber-400 italic'
-                                          : ''
-                                      }`}
-                                      onClick={() => item.status === 'PENDING' && startEditingTitle(item)}
-                                      title={item.status === 'PENDING' ? 'Click to edit title' : ''}
-                                    >
-                                      {itemNeedsTitle ? '(click to add title)' : item.title}
-                                    </h4>
-                                    {item.status === 'PENDING' && !itemNeedsTitle && (
+                        return (
+                          <div
+                            key={item.id}
+                            className={`p-4 ${
+                              item.status !== 'PENDING'
+                                ? 'opacity-50'
+                                : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                            }`}
+                          >
+                            <div className="flex items-start gap-3">
+                              {item.status === 'PENDING' && (
+                                <input
+                                  type="checkbox"
+                                  checked={selectedItems.has(item.id)}
+                                  onChange={() => toggleItem(item.id)}
+                                  className="mt-1"
+                                />
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-start justify-between gap-3 mb-2">
+                                  {/* Editable Title */}
+                                  {isEditing ? (
+                                    <div className="flex items-center gap-2 flex-1">
+                                      <input
+                                        ref={editInputRef}
+                                        type="text"
+                                        value={editingTitle}
+                                        onChange={(e) => setEditingTitle(e.target.value)}
+                                        onKeyDown={(e) => handleEditKeyDown(e, job.id, item.id)}
+                                        className="flex-1 px-2 py-1 border border-blue-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-blue-500"
+                                        placeholder="Enter a title..."
+                                        disabled={savingTitle}
+                                      />
                                       <button
-                                        onClick={() => startEditingTitle(item)}
-                                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-sm"
-                                        title="Edit title"
+                                        onClick={() => saveTitle(job.id, item.id)}
+                                        disabled={savingTitle}
+                                        className="px-2 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
                                       >
-                                        ✏️
+                                        {savingTitle ? '...' : 'Save'}
                                       </button>
+                                      <button
+                                        onClick={cancelEditing}
+                                        disabled={savingTitle}
+                                        className="px-2 py-1 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-2">
+                                      {itemNeedsTitle && item.status === 'PENDING' && (
+                                        <span className="text-amber-500" title="Needs a title">⚠️</span>
+                                      )}
+                                      <h4
+                                        className={`font-medium text-base ${
+                                          item.status === 'PENDING'
+                                            ? 'cursor-pointer hover:text-blue-600 dark:hover:text-blue-400'
+                                            : ''
+                                        } ${
+                                          itemNeedsTitle
+                                            ? 'text-amber-600 dark:text-amber-400 italic'
+                                            : ''
+                                        }`}
+                                        onClick={() => item.status === 'PENDING' && startEditingTitle(item)}
+                                        title={item.status === 'PENDING' ? 'Click to edit title' : ''}
+                                      >
+                                        {itemNeedsTitle ? '(click to add title)' : item.title}
+                                      </h4>
+                                      {item.status === 'PENDING' && !itemNeedsTitle && (
+                                        <button
+                                          onClick={() => startEditingTitle(item)}
+                                          className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-sm"
+                                          title="Edit title"
+                                        >
+                                          ✏️
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                    {item.category && (
+                                      <span className="px-2 py-0.5 bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 rounded text-xs font-medium">
+                                        {item.category}
+                                      </span>
                                     )}
+                                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${getTypeColor(item.type)}`}>
+                                      {item.type}
+                                    </span>
+                                    {item.confidence !== null && item.confidence !== undefined && (
+                                      <span className="text-xs text-gray-500">
+                                        {Math.round(item.confidence * 100)}%
+                                      </span>
+                                    )}
+                                    <span className={`px-2 py-0.5 rounded text-xs ${getStatusColor(item.status)}`}>
+                                      {item.status}
+                                    </span>
+                                  </div>
+                                </div>
+                                {item.url && (
+                                  <a
+                                    href={item.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-sm text-blue-600 hover:underline dark:text-blue-400 block mb-1 truncate"
+                                  >
+                                    🔗 {item.url}
+                                  </a>
+                                )}
+                                {item.description && (
+                                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                    {item.description}
+                                  </p>
+                                )}
+                                {item.authorNote && (
+                                  <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-sm">
+                                    <span className="font-semibold text-blue-900 dark:text-blue-300">Benedict&apos;s note:</span>
+                                    <span className="text-gray-700 dark:text-gray-300 ml-2 italic">{item.authorNote}</span>
                                   </div>
                                 )}
-                                <div className="flex items-center gap-2 flex-shrink-0">
-                                  {item.category && (
-                                    <span className="px-2 py-0.5 bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 rounded text-xs font-medium">
-                                      {item.category}
-                                    </span>
-                                  )}
-                                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${getTypeColor(item.type)}`}>
-                                    {item.type}
-                                  </span>
-                                  {item.confidence !== null && item.confidence !== undefined && (
-                                    <span className="text-xs text-gray-500">
-                                      {Math.round(item.confidence * 100)}%
-                                    </span>
-                                  )}
-                                  <span className={`px-2 py-0.5 rounded text-xs ${getStatusColor(item.status)}`}>
-                                    {item.status}
-                                  </span>
-                                </div>
+                                {item.suggestedTags && (
+                                  <div className="flex flex-wrap gap-1 mt-2">
+                                    {JSON.parse(item.suggestedTags).map((tag: string, idx: number) => (
+                                      <span
+                                        key={idx}
+                                        className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs"
+                                      >
+                                        {tag}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
-                              {item.url && (
-                                <a
-                                  href={item.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-sm text-blue-600 hover:underline dark:text-blue-400 block mb-1 truncate"
-                                >
-                                  🔗 {item.url}
-                                </a>
-                              )}
-                              {item.description && (
-                                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                                  {item.description}
-                                </p>
-                              )}
-                              {item.authorNote && (
-                                <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-sm">
-                                  <span className="font-semibold text-blue-900 dark:text-blue-300">Benedict&apos;s note:</span>
-                                  <span className="text-gray-700 dark:text-gray-300 ml-2 italic">{item.authorNote}</span>
-                                </div>
-                              )}
-                              {item.suggestedTags && (
-                                <div className="flex flex-wrap gap-1 mt-2">
-                                  {JSON.parse(item.suggestedTags).map((tag: string, idx: number) => (
-                                    <span
-                                      key={idx}
-                                      className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs"
-                                    >
-                                      {tag}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}
